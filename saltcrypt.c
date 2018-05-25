@@ -142,9 +142,8 @@ int decrypt_file_mem(const char* fnin,const char* fnout,const uint8_t* key)
 	uint8_t nonce[crypto_secretbox_NONCEBYTES];
 	
 	uint8_t* ciphertext=readnew(fnin,&sz,0);
-	FILE* foo=fopen(fnout,"wb");
-	
-	if(!ciphertext || !foo)
+	FILE* foo;
+	if(!ciphertext)
 	{
 		return -1;
 	}
@@ -156,12 +155,25 @@ int decrypt_file_mem(const char* fnin,const char* fnout,const uint8_t* key)
 	memcpy(nonce,ciphertext,crypto_secretbox_NONCEBYTES);
 	memset(ciphertext,0,crypto_secretbox_BOXZEROBYTES+NBDIFF);
 	
-	crypto_secretbox_open(plainout,ciphertext+NBDIFF,sz-NBDIFF,nonce,key);
+	int result=crypto_secretbox_open(plainout,ciphertext+NBDIFF,sz-NBDIFF,nonce,key);
+	if(result!=0)
+	{
+		fprintf(stderr,"Incorrect password.\n");
+	}
 	
 	free(ciphertext);
-	fwrite(plainout+crypto_secretbox_ZEROBYTES,1,plainsize-crypto_secretbox_ZEROBYTES,foo);
+	if(result==0)
+	{
+		foo=fopen(fnout,"wb");
+		if(foo)
+		{
+			result=fwrite(plainout+crypto_secretbox_ZEROBYTES,1,plainsize-crypto_secretbox_ZEROBYTES,foo);
+			fclose(foo);
+		}
+	}
+	
 	free(plainout);
-	return 0;
+	return result;
 }
 void print_hex(const uint8_t *s,size_t len)
 {
@@ -260,9 +272,9 @@ int main(int argc,const char** argv)
 		}
 		password[strcspn(password, "\n")]=0;
 		size_t pwlen=strnlen(password,PWMAX);
-		fprintf(stderr,"Deriving key...");
+		fprintf(stderr,"Deriving key...\n");
 		kdf(key,(const uint8_t*)password,pwlen,1UL << 18);
-		fprintf(stderr,"Deriving key complete.");
+		fprintf(stderr,"Deriving key complete.\n");
 		if(keyfile)
 		{
 			FILE* kfo=fopen(keyfile,"w");
@@ -286,7 +298,7 @@ int main(int argc,const char** argv)
 		{
 			if(fscanf(kfi, "%2x", &v) != 1)
 			{
-				fprintf(stderr,"Could not understand key file.");
+				fprintf(stderr,"Could not understand key file.\n");
 				return -1;
 			}
 			key[ki] = (uint8_t)v;
